@@ -8,7 +8,11 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "datasets[audio]>=5.0.1",
+    "librosa>=1.0.0",
+    "matplotlib>=3.11.2",
     "pandas>=3.0.6",
+    "seaborn>=0.13.2",
 ]
 
 [project.scripts]
