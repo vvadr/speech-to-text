@@ -26,14 +26,15 @@ import imageio_ffmpeg
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CORPUS = ROOT / "data" / "Karakalpak Speech Corpus"
-V1_ARCHIVE = CORPUS / "DATASET_v1.7z"
-V2_ARCHIVE = CORPUS / "DATASET_version2.7z"
-RAW_AUDIO = CORPUS / "DATASET_version2" / "DATASET"
-OUTPUT = CORPUS / "aligned"
-MANIFEST = OUTPUT / "manifest.csv"
-DATA_CSV = OUTPUT / "data.csv"
-CLEANED = OUTPUT / "cleaned"
+CORPUS = ROOT / "data" / "karakalpak-mendeley"
+SOURCES = CORPUS / "sources"
+V1_ARCHIVE = SOURCES / "DATASET_v1.7z"
+V2_ARCHIVE = SOURCES / "DATASET_version2.7z"
+RAW_AUDIO = SOURCES / "version2_extracted" / "DATASET"
+ALIGNED = CORPUS / "aligned"
+CLEANED = CORPUS / "cleaned"
+MANIFEST = ALIGNED / "manifest.csv"
+MEASUREMENTS = ALIGNED / "measurements.csv"
 EXPECTED_SHA256 = {
     V1_ARCHIVE: "97ba2d6f457e3710cd305208aea1196b5c798a544e1b6c62409ae19f2b230918",
     V2_ARCHIVE: "03ddca8106f8e6247e556665381800eb458f58e2c4c6947bae0b99b290c6d91b",
@@ -150,11 +151,11 @@ def align() -> None:
         }
         for index, name in enumerate(sorted(texts))
     ]
-    OUTPUT.mkdir(parents=True, exist_ok=True)
-    (OUTPUT / "source_train_v1.csv").write_bytes(source_bytes)
+    ALIGNED.mkdir(parents=True, exist_ok=True)
+    (ALIGNED / "publisher_train_v1.csv").write_bytes(source_bytes)
     write_csv(MANIFEST, list(rows[0]), rows)
     write_csv(
-        OUTPUT / "train.csv", ["filename", "text"],
+        ALIGNED / "source_pairs.csv", ["filename", "text"],
         [{"filename": row["filename"], "text": row["sentence_latin"]} for row in rows],
     )
     provenance = {
@@ -169,7 +170,7 @@ def align() -> None:
         "local_audio_crc_matches": len(rows),
         "source_containers": dict(Counter(row["source_container"] for row in rows)),
     }
-    (OUTPUT / "provenance.json").write_text(
+    (ALIGNED / "provenance.json").write_text(
         json.dumps(provenance, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
     print(f"Aligned {len(rows)} unique audio/transcript pairs from {len(source_rows)} publisher rows")
@@ -192,8 +193,8 @@ def ffmpeg_wav(source: Path, destination: Path, sample_rate: int | None = None) 
 def prepare_one(row: dict[str, str]) -> None:
     name = row["filename"]
     source = RAW_AUDIO / name
-    original = OUTPUT / "data" / name
-    converted = OUTPUT / "data_16k" / name
+    original = ALIGNED / "audio_original" / name
+    converted = ALIGNED / "audio_16k" / name
     original.parent.mkdir(parents=True, exist_ok=True)
     if row["source_container"] == "WAV":
         if not original.is_file() or not filecmp.cmp(source, original, shallow=False):
@@ -232,8 +233,8 @@ def prepare_audio(workers: int) -> None:
     with ThreadPoolExecutor(max_workers=workers) as pool:
         list(pool.map(prepare_one, rows))
     expected = {row["filename"] for row in rows}
-    for folder in ("data", "data_16k"):
-        actual = {path.name for path in (OUTPUT / folder).glob("*.wav")}
+    for folder in ("audio_original", "audio_16k"):
+        actual = {path.name for path in (ALIGNED / folder).glob("*.wav")}
         if actual != expected:
             raise ValueError(f"{folder}: audio file set differs from manifest")
     print(f"Prepared {len(rows)} original/decoded and 16 kHz WAV pairs")
@@ -262,8 +263,8 @@ def features() -> None:
     output = []
     for index, row in enumerate(rows):
         name = row["filename"]
-        original = OUTPUT / "data" / name
-        converted = OUTPUT / "data_16k" / name
+        original = ALIGNED / "audio_original" / name
+        converted = ALIGNED / "audio_16k" / name
         original_info = wav_info(original)
         converted_info = wav_info(converted)
         if original_info[1] not in (1, 2) or original_info[2] != 2 or converted_info[:3] != (16_000, 1, 2):
@@ -282,7 +283,7 @@ def features() -> None:
         })
         if (index + 1) % 100 == 0:
             print(f"Measured {index + 1}/{len(rows)} recordings", flush=True)
-    write_csv(DATA_CSV, list(output[0]), output)
+    write_csv(MEASUREMENTS, list(output[0]), output)
     print(f"Wrote measurements for {len(output)} aligned pairs")
 
 
@@ -292,7 +293,7 @@ def normalize(text: str) -> str:
 
 
 def reviewed_expansions() -> dict[str, list[dict[str, str]]]:
-    path = OUTPUT / "abbreviation_expansions.csv"
+    path = ALIGNED / "abbreviation_review.csv"
     if not path.is_file():
         return {}
     expansions: dict[str, list[dict[str, str]]] = defaultdict(list)
@@ -321,8 +322,28 @@ def normalized_transcript(text: str, name: str, expansions: dict[str, list[dict[
     return result, applied
 
 
+def write_layout_guides(pair_count: int) -> None:
+    guides = {
+        CORPUS / "README.md": (
+            "# Karakalpak Mendeley dataset\n\n"
+            f"Use `cleaned/train.csv` with the {pair_count:,} matching 16 kHz WAVs in `cleaned/audio/`.\n\n"
+            "`cleaned/` is the final dataset. `aligned/` holds intermediate pairs and measurements. "
+            "`sources/` holds the original Mendeley files.\n"
+        ),
+        CLEANED / "README.md": (
+            "# Cleaned Mendeley dataset\n\n"
+            "Use `train.csv` and `audio/` together. Each `filename` in the CSV names one WAV in `audio/`.\n\n"
+            f"There are {pair_count:,} paired rows and WAVs. `metadata.csv` adds source traceability; "
+            "`audio_original/` has the matching pre-resampling recordings.\n"
+        ),
+    }
+    for path, content in guides.items():
+        if not path.exists():
+            path.write_text(content, encoding="utf-8")
+
+
 def clean() -> None:
-    rows = read_csv(DATA_CSV)
+    rows = read_csv(MEASUREMENTS)
     kept = []
     for row in rows:
         word_count = len(row["sentence_latin"].split())
@@ -341,13 +362,13 @@ def clean() -> None:
             "source_csv_row_count": row["source_csv_row_count"],
             "source_container": row["source_container"],
         })
-    write_csv(CLEANED / "data.csv", list(kept[0]), kept)
-    for folder in ("data", "data_16k"):
-        target = CLEANED / folder
+    write_csv(ALIGNED / "selection.csv", list(kept[0]), kept)
+    for source_folder, target_folder in (("audio_original", "audio_original"), ("audio_16k", "audio")):
+        target = CLEANED / target_folder
         target.mkdir(parents=True, exist_ok=True)
         expected = {row["filename"] for row in kept}
         for row in kept:
-            source = OUTPUT / folder / row["source_filename"]
+            source = ALIGNED / source_folder / row["source_filename"]
             destination = target / row["filename"]
             if not destination.is_file() or not filecmp.cmp(source, destination, shallow=False):
                 temporary = destination.with_suffix(".partial.wav")
@@ -371,20 +392,21 @@ def clean() -> None:
             "sentence_latin": cleaned_text,
             "normalized_word_count": len(cleaned_text.split()),
         })
-    write_csv(CLEANED / "removed_annotations.csv", list(normalized[0]), normalized)
+    write_csv(CLEANED / "metadata.csv", list(normalized[0]), normalized)
     write_csv(
         CLEANED / "train.csv", ["filename", "text"],
         [{"filename": row["filename"], "text": row["sentence_latin"]} for row in normalized],
     )
+    write_layout_guides(len(kept))
     print(f"Kept {len(kept)} paired recordings; applied {applied} verified abbreviation expansions")
 
 
 def audit() -> None:
     manifest = read_csv(MANIFEST)
-    data = read_csv(DATA_CSV)
-    cleaned = read_csv(CLEANED / "data.csv")
-    normalized = read_csv(CLEANED / "removed_annotations.csv")
-    source_train = read_csv(OUTPUT / "train.csv")
+    data = read_csv(MEASUREMENTS)
+    cleaned = read_csv(ALIGNED / "selection.csv")
+    normalized = read_csv(CLEANED / "metadata.csv")
+    source_train = read_csv(ALIGNED / "source_pairs.csv")
     clean_train = read_csv(CLEANED / "train.csv")
     if len(manifest) != 2022 or len(data) != 2022 or len(cleaned) != len(normalized):
         raise ValueError("Output row count mismatch")
@@ -420,14 +442,14 @@ def audit() -> None:
             or normalized_row["normalized_word_count"] != str(len(expected_text.split()))
         ):
             raise ValueError(f"Cleaned transcript differs from reviewed text at {index}")
-    for folder in ("data", "data_16k"):
+    for source_folder, target_folder in (("audio_original", "audio_original"), ("audio_16k", "audio")):
         expected = {row["filename"] for row in cleaned}
-        actual = {path.name for path in (CLEANED / folder).glob("*.wav")}
+        actual = {path.name for path in (CLEANED / target_folder).glob("*.wav")}
         if actual != expected:
-            raise ValueError(f"Cleaned/{folder} has missing or extra audio files")
+            raise ValueError(f"Cleaned/{target_folder} has missing or extra audio files")
         for row in cleaned:
-            source = OUTPUT / folder / row["source_filename"]
-            destination = CLEANED / folder / row["filename"]
+            source = ALIGNED / source_folder / row["source_filename"]
+            destination = CLEANED / target_folder / row["filename"]
             if not filecmp.cmp(source, destination, shallow=False):
                 raise ValueError(f"Cleaned audio differs from source: {destination}")
     print(f"Audit passed: {len(data)} aligned source pairs, {len(cleaned)} cleaned pairs")

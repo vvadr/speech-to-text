@@ -1,42 +1,60 @@
-# Mendeley Karakalpak Speech Corpus pipeline
+# Mendeley Karakalpak speech corpus
 
-This pipeline uses the published [Mendeley version 1](https://data.mendeley.com/datasets/2th8jvft8f/1) `train.csv` to pair text with recordings by **filename**. The version 2 CSV has generated `sentence_kaa0...` names that do not match its audio. Version 1 has 17,238 CSV rows but only 2,022 distinct filename/text pairs. Repeated filenames have the same text, and their audio CRCs match version 2 and the locally extracted recordings. The version 2 CSV also changes three words to crude replacements; its row order is not used to assign transcripts.
+## Start here
 
-The source archives and extracted version 2 files stay in `data/Karakalpak Speech Corpus/`. The pipeline writes to `data/Karakalpak Speech Corpus/aligned/`. Everything under `data/` is local and Git ignored.
+The dataset ready for training is in **`data/karakalpak-mendeley/cleaned/`**:
 
-## Outputs
+- `train.csv` has exactly one `filename,text` row for each recording.
+- `audio/` has the matching **16 kHz mono WAV** files. For example, the first CSV row names `audio_000000.wav`, which is `audio/audio_000000.wav`.
+- `metadata.csv` has the same cleaned text plus the original filename, source text, duration, SNR estimates, and other traceability fields.
+- `audio_original/` has the same 2,022 recordings before resampling, under the same cleaned filenames.
 
-| Path under `aligned/` | Meaning |
-| --- | --- |
-| `source_train_v1.csv` | Exact publisher version 1 CSV, including duplicate rows. Reference only. |
-| `manifest.csv` | One authoritative source filename/transcript pair per recording. |
-| `train.csv` | Two-column `filename,text` CSV with exactly one row per source audio file. |
-| `provenance.json` | Archive digests, pair counts, CRC checks, and source container counts. |
-| `data/` | 2,022 original WAVs; 11 mislabeled AAC files are decoded to WAV. Original stereo WAVs remain stereo. |
-| `data_16k/` | Matching 16 kHz mono PCM WAVs. |
-| `data.csv` | Paired source filenames and transcripts with duration and original/16 kHz SNR estimates. |
-| `abbreviation_expansions.csv` | Per-recording audio review decisions and evidence. |
-| `cleaned/data.csv` | Rows retained by the existing duration and word-count rule, renamed in sequential order. |
-| `cleaned/data/`, `cleaned/data_16k/` | Corresponding sequentially named audio in both forms. |
-| `cleaned/removed_annotations.csv` | **Training transcript CSV**: lowercase, punctuation removed, spaces collapsed, and only audio-supported abbreviations expanded. Includes `source_filename` and original transcript for traceability. |
-| `cleaned/train.csv` | Minimal two-column `filename,text` training manifest matched to `cleaned/data_16k/`. |
+The training CSV and its audio sit together. The source and intermediate folders are separate:
 
-The rule removes a pair when `duration < 2` seconds or `word_count < 4`. This corpus retains all 2,022 pairs. It contains about 5.07 hours of audio. There are 23 stereo WAV sources and 11 MP4/AAC files with `.wav` extensions. A missing SNR means no separate quiet/speech region was found; it does not drop the pair.
+```text
+data/
+├── karakalpak-audio-dataset-hf/    # Separate Hugging Face dataset
+└── karakalpak-mendeley/
+    ├── README.md                   # Local quick guide
+    ├── cleaned/                    # USE THIS FOR TRAINING
+    │   ├── train.csv               # filename,text
+    │   ├── audio/                  # 16 kHz mono WAVs named by train.csv
+    │   ├── metadata.csv            # Cleaned text and source traceability
+    │   ├── audio_original/         # Matching original or decoded WAVs
+    ├── aligned/                    # Intermediate pairs and measurements
+    │   ├── source_pairs.csv        # Original filename,text mapping
+    │   ├── manifest.csv
+    │   ├── selection.csv           # Selected rows before text normalization
+    │   ├── audio_original/
+    │   ├── audio_16k/
+    │   ├── measurements.csv
+    │   ├── abbreviation_review.csv
+    │   ├── publisher_train_v1.csv  # Publisher rows, including duplicates
+    │   └── provenance.json
+    └── sources/                    # Original Mendeley archives and extraction
+        ├── DATASET_v1.7z
+        ├── DATASET_version2.7z
+        └── version2_extracted/
+```
 
-## Run
+Everything under `data/` stays local and Git ignored.
 
-From the repository root, with the existing project environment and `7z` available:
+## How the pairs were selected
+
+The [published Mendeley version 1](https://data.mendeley.com/datasets/2th8jvft8f/1) `train.csv` has 17,238 rows but only 2,022 distinct filename/transcript pairs. Repeated filenames have the same text. Version 1 filenames match all 2,022 local recordings, and audio CRCs match the version 2 archive. Version 2's CSV uses generated `sentence_kaa0...` names that do not match its audio, so its row order is not used to assign transcripts.
+
+The pipeline decoded 11 MP4/AAC recordings that had `.wav` names, preserved 23 stereo WAV sources in `audio_original/`, and prepared all 2,022 recordings as 16 kHz mono WAVs. The `(duration < 2) | (word_count < 4)` rule removed no pairs. Total recording duration is about 5.07 hours. A missing SNR means no separate quiet and speech regions were found; it does not remove the pair.
+
+Text was lowercased, punctuation was removed, and whitespace was collapsed. Seven abbreviations were expanded only where local Karakalpak ASR supported the spoken full form. The per-recording decisions and evidence are in `aligned/abbreviation_review.csv`; uncertain cases remain as supplied. This is model-assisted review, and `notebooks/mendeley_review.ipynb` lets a Karakalpak speaker play each recording.
+
+## Rebuild or inspect
+
+From the repository root, with the project environment and `7z` installed:
 
 ```bash
 .venv/bin/python scripts/mendeley_pipeline.py
 ```
 
-The stages can also run separately with `--stage align|audio|features|clean|audit`. `--workers 6` controls audio preparation concurrency. The script checks both archive SHA-256 values, source and extracted audio CRCs, row mapping, WAV properties, normalized text, and exact cleaned audio copies. Re-running it preserves the local `abbreviation_expansions.csv` review table.
+The stages are `align`, `audio`, `features`, `clean`, and `audit`; `--stage` runs one stage. `--workers 6` controls audio preparation concurrency. The script checks archive SHA-256 values, source and extracted audio CRCs, filename mappings, WAV properties, cleaned text, and copied audio. Re-running preserves the local `aligned/abbreviation_review.csv` decisions.
 
-Open `notebooks/mendeley_review.ipynb` to play the first matched recording and inspect any other pair, view original versus 16 kHz audio features, and play each abbreviation decision.
-
-## Abbreviation decisions
-
-The publisher text is mostly lowercase and already stripped of punctuation. Review focused on `tb`, `t b`, `xbr`, and `qr`. Local Karakalpak Wav2Vec2 CTC inference on the matching recordings supported seven full forms, which are listed in `abbreviation_expansions.csv` with the source filename and evidence. When the model suggested spoken letters or was unclear, the text stays as supplied. The review was model assisted; the decisions are available for a Karakalpak speaker to check by playing each recording in the review notebook.
-
-The filename mapping is publisher supplied and archive verified. This does not prove that every word in all 2,022 transcripts matches human listening; the review notebook makes spot checks and abbreviation decisions easy to inspect. No speaker identifiers are present in the local archives, so this pipeline does not create a speaker independent train/validation/test split.
+Open `notebooks/mendeley_review.ipynb` to play the first matched pair, inspect original and 16 kHz audio features, and review abbreviation decisions. The available archives do not include speaker identifiers, so this pipeline does not create a speaker-independent train/validation/test split.
