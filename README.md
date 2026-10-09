@@ -43,10 +43,16 @@ The training CSVs contain only three columns:
 filenames, original transcripts, Cyrillic text, quality measurements, and audio
 checksums are kept in `provenance/metadata.csv` for auditing.
 
-Start with [notebooks/dataset_splits.ipynb](notebooks/dataset_splits.ipynb) to load
+Start with [notebooks/preprocessingAndFeatureExtraction/dataset_splits.ipynb](notebooks/preprocessingAndFeatureExtraction/dataset_splits.ipynb) to load
 any folder as a Hugging Face `DatasetDict` and listen to a matched training row.
 The Monday and Tuesday notebooks analyze the preserved HF source snapshot;
 Wednesday reviews its cleaning rule; Thursday explores combined training text.
+All eight notebooks live under `notebooks/preprocessingAndFeatureExtraction/`.
+See [docs/notebook_workflow.md](docs/notebook_workflow.md) for each notebook,
+setup, execution order, dataset paths, and limitations.
+
+The combined recordings total **8 hours, 33 minutes, 3 seconds**:
+6 hours, 50 minutes, 15 seconds in train and 1 hour, 42 minutes, 48 seconds in test.
 
 ## Splits and cleaning
 

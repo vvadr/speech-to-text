@@ -67,4 +67,9 @@ prevent those specific forms of leakage; unseen-speaker evaluation requires
 additional speaker metadata. SNR values are energy-based estimates rather than
 ground-truth quality labels.
 
-Dataset changes are local under ignored `data/`. No commit or push was performed.
+Dataset changes remain local under ignored `data/`. Publication includes only
+code, notebooks, and documentation; WAVs, archives, CSV manifests, and local
+checksum reports are excluded from Git.
+
+For the complete notebook relocation, file inventory, run instructions, and
+validation of the new paths, see [notebook_workflow.md](notebook_workflow.md).
