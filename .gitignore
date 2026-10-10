@@ -16,6 +16,7 @@ env/
 # Jupyter
 .ipynb_checkpoints/
 /data/
+# Local model weights, training history, and split manifests
 /checkpoints/
 
 # Build and packaging output
