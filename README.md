@@ -43,10 +43,16 @@ The training CSVs contain only three columns:
 filenames, original transcripts, Cyrillic text, quality measurements, and audio
 checksums are kept in `provenance/metadata.csv` for auditing.
 
-Start with [notebooks/dataset_splits.ipynb](notebooks/dataset_splits.ipynb) to load
+Start with [notebooks/preprocessingAndFeatureExtraction/dataset_splits.ipynb](notebooks/preprocessingAndFeatureExtraction/dataset_splits.ipynb) to load
 any folder as a Hugging Face `DatasetDict` and listen to a matched training row.
 The Monday and Tuesday notebooks analyze the preserved HF source snapshot;
 Wednesday reviews its cleaning rule; Thursday explores combined training text.
+All eight notebooks live under `notebooks/preprocessingAndFeatureExtraction/`.
+See [docs/notebook_workflow.md](docs/notebook_workflow.md) for each notebook,
+setup, execution order, dataset paths, and limitations.
+
+The combined recordings total **8 hours, 33 minutes, 3 seconds**:
+6 hours, 50 minutes, 15 seconds in train and 1 hour, 42 minutes, 48 seconds in test.
 
 ## Splits and cleaning
 
@@ -96,3 +102,27 @@ WAV loading. The training and preserved decoded audio are valid WAV files.
 
 Local datasets remain ignored by Git. See
 [docs/dataset_review.md](docs/dataset_review.md) for the code review and validation.
+
+## Whisper fine-tuning
+
+Start with [notebooks/whisper/setup.ipynb](notebooks/whisper/setup.ipynb).
+The code uses plain settings, tables, small functions, and loops. The runner
+executes all stages in one Python session, checks the data/model, trains every
+Whisper-small parameter for three epochs, and evaluates the selected checkpoint.
+
+```bash
+uv run ipython -c "get_ipython().run_line_magic('run', 'notebooks/whisper/setup.ipynb'); run_notebooks(train=True)"
+```
+
+Choose the **Whisper (project .venv)** kernel. Use `run_notebooks(train=False)`
+for checks without training; training is disabled by default. Each stage imports
+its libraries and loads missing prerequisite steps. Read the numbered
+notebooks to follow the steps, and see [docs/whisper_training.md](docs/whisper_training.md)
+for each file, beginner explanations, architecture, settings, training stages,
+and progress logs. Source datasets stay read-only; model outputs remain local
+under the ignored `checkpoints/` folder. Change `RUN_NAME` before a new experiment.
+
+Open [07_progress.ipynb](notebooks/whisper/07_progress.ipynb) in another tab to
+visualize the current stage, progress bar, and loss curves. Choose the same run
+name and rerun its cells to refresh. The previous full run was stopped before
+its first checkpoint; the next configured run is `whisper-small-kaa-full-run02`.

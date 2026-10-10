@@ -16,6 +16,7 @@ env/
 # Jupyter
 .ipynb_checkpoints/
 /data/
+/checkpoints/
 
 # Build and packaging output
 build/
