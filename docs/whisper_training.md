@@ -73,6 +73,26 @@ training. The viewer uses the old terminal log as a fallback for the stopped
 first run. A lower training-loss curve does not by itself prove recognition
 accuracy. The viewer reads files only and never loads or starts the model.
 
+## Results from the completed run
+
+The local run `whisper-small-kaa-full-run02` completed three epochs on Apple
+MPS. All 241,734,912 Whisper-small parameters were trainable. It used 3,338
+training recordings and 370 validation recordings; the separate 927-recording
+test split was left untouched.
+
+| Epoch | Training loss | Validation loss | Weight updates |
+| ---: | ---: | ---: | ---: |
+| 1 | 0.7894 | 0.5626 | 418 |
+| 2 | 0.2938 | 0.4665 | 836 |
+| 3 | 0.1312 | 0.4586 | 1,254 |
+
+After training, the selected checkpoint transcribed all 370 validation
+recordings with **32.45% word error rate (WER)** and **7.31% character error
+rate (CER)**. These are validation results for this dataset and decoding setup;
+the held-out test set has not been scored, so do not report these as test
+results. The validation predictions and scores are in
+`checkpoints/whisper-small-kaa-full-run02/validation_metrics.json`.
+
 ## Each notebook
 
 The runner uses this order: **setup → data → model → batching → checks → training
@@ -201,38 +221,50 @@ preceding data/settings loaded. It scores all 927 test recordings. Generation is
 greedy by default and limited to 444 new tokens; reaching the cap may truncate
 an output, so inspect longer predictions.
 
-## Files produced by a full run
+## Checkpoints and local run files
+
+The root `checkpoints/` folder stores local training outputs. Git ignores this
+folder so model weights, large archives, and per-recording split manifests
+stay out of code pushes. A new clone does not contain these files; run training
+again to create them. The completed local run has this layout:
 
 ```text
 checkpoints/
-  whisper-small-kaa-full-run01.log   # background terminal output
-  whisper-small-kaa-full-run01.pid   # background process ID
-  whisper-small-kaa-full-run01/
-    settings.json                   # model, device, hyperparameters, row counts
-    train_split.csv                 # exact training membership
+  whisper-small-kaa-full-run02.zip   # shareable archive of the best/ folder
+  whisper-small-kaa-full-run02/
+    settings.json                   # model, device, settings, row counts
+    train_split.csv                 # exact training recording membership
     validation_split.csv
-    test_split.csv
-    progress.json                   # training/validation/evaluation stage
-    loss_history.csv                # each update, for live notebook plots
-    history.json                    # completed epochs and validation losses
-    best/                           # selected model and processor
-    validation_metrics.json         # after training and validation decoding
-    test_metrics.json               # only if final testing is enabled
+    test_split.csv                  # reserved rows; not used for selection
+    progress.json                  # completed stage and recording count
+    loss_history.csv               # loss after each optimizer update
+    history.json                   # train/validation loss for each epoch
+    best/                           # selected model weights and load files
+      model.safetensors             # learned Whisper weights
+      config.json                   # model architecture/configuration
+      generation_config.json        # transcription generation settings
+      tokenizer.json                # text token vocabulary
+      tokenizer_config.json         # tokenizer settings
+      processor_config.json         # audio feature processor settings
+    validation_metrics.json         # WER, CER, references and predictions
+    test_metrics.json               # created only when final test is run
 ```
 
-The log/PID files are produced by the background launch, not by notebook code.
-`progress.json` updates after each optimizer update. `best/` appears after the
-first completed epoch improves validation loss. These are inference checkpoints;
-optimizer/RNG state is not saved, and exact training resume is not implemented.
-Keep source data unchanged between training and evaluation. Saved split rows are
-checked before recognition scores are reported. There is no distributed or
-multi-GPU support.
+The ZIP includes the complete `best/` folder; share that archive when someone
+needs to load the trained model. The weights alone are insufficient because
+the configuration, tokenizer, and processor are needed to use Whisper. The
+checkpoint is for inference. Optimizer and random-number state are not saved,
+so exact training resume is not implemented. Saved split rows are checked
+before recognition scores are reported. There is no distributed or multi-GPU
+support.
 
-To follow this run from a terminal:
+The earlier `whisper-small-kaa-full-run01` was stopped during its first epoch
+at batch 864 of 3,338, after 108 updates. It did not save a model checkpoint.
+Its old progress/log files remain locally for inspection.
 
-```bash
-tail -f checkpoints/whisper-small-kaa-full-run01.log
-```
+To follow a running experiment, open `07_progress.ipynb` in a second notebook
+tab and set `RUN_TO_WATCH` to the experiment name. A run launched through a
+background terminal command can also be followed with `tail -f` on its log file.
 
 ## Verification
 
@@ -246,20 +278,7 @@ and all-parameters-trainable checks passed. A separate regression verified that
 variable token counts and the final partial accumulation window produce the
 same update as one combined token batch. The source datasets were not modified.
 
-A small, randomly initialized Whisper model and real recordings are used for
-an affordable external contract check of training, checkpoint save/reload, and
-recognition. This check is not the full-model training run or an ASR benchmark.
-The long full-model run is tracked separately through its log and progress file.
-
-## Stopped full-model run
-
-The first full run was stopped at the user's request on 2026-10-10. Its final
-recorded progress was epoch 1, batch **864 of 3,338**, with **108 optimizer
-updates**. The progress status is now `stopped`; the training process is gone.
-It had not completed the first epoch, so no model checkpoint or validation score
-had been saved. The next configured run is `whisper-small-kaa-full-run02` and
-training is disabled until explicitly requested. This is a new training run,
-not an exact continuation of the stopped weights.
-
-The previous output/log remains under `checkpoints/whisper-small-kaa-full-run01*`
-for inspection. Open `07_progress.ipynb` to visualize its stopped status and loss.
+A small, randomly initialized Whisper model and real recordings were also used
+for an affordable contract check of training, checkpoint save/reload, and
+recognition. It was not the full-model training run or an ASR benchmark. The
+full-run results above come from the saved run02 history and validation metrics.
